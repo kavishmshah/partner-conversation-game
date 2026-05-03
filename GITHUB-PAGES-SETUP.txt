@@ -1,0 +1,58 @@
+GitHub Pages — run the game from anywhere (HTTPS)
+==================================================
+
+You need a GitHub repository. Two setups:
+
+------------------------------------------------------------
+A) Repo is ONLY the game (recommended for you + partner)
+------------------------------------------------------------
+
+1. On GitHub: New repository → name it e.g. partner-conversation-game → Create (no README needed).
+
+2. On your computer, copy EVERYTHING inside this folder (index.html, app.js, styles.css,
+   questions-index.js, data/, …) into a new empty folder that will become the repo root.
+
+3. Add GitHub Actions workflow:
+   - Create folders: .github/workflows/
+   - Copy github-pages-workflow-REPO-ROOT.yml.template → .github/workflows/pages.yml
+   - You can delete the .template file after copying.
+
+4. In that folder:
+   git init
+   git add .
+   git commit -m "Partner conversation game"
+   git branch -M main
+   git remote add origin https://github.com/YOUR_USERNAME/YOUR_REPO.git
+   git push -u origin main
+
+5. On GitHub: Settings → Pages → Build and deployment → Source: GitHub Actions
+   (pick the “Deploy to GitHub Pages” / static workflow if GitHub asks.)
+
+6. Wait ~1 minute. Settings → Pages shows the live URL, usually:
+   https://YOUR_USERNAME.github.io/YOUR_REPO/
+
+7. Open that URL on both phones. Same room code, Player 1 vs Player 2.
+
+------------------------------------------------------------
+B) Your repo already contains the whole IMX8 project
+------------------------------------------------------------
+
+If you push this workspace as-is (with folder partner-conversation-game/), the workflow at:
+
+  .github/workflows/partner-conversation-game-pages.yml
+
+deploys only partner-conversation-game/ to Pages.
+
+Enable Pages with Source: GitHub Actions as in step 5 above.
+
+Site URL is still https://USER.github.io/REPO/ — the game lives at the root of that site.
+
+------------------------------------------------------------
+Notes
+------------------------------------------------------------
+
+• HTTPS helps WebSocket sync (Yjs) work reliably on mobile.
+
+• First deploy: Actions tab should show a green check; if red, open the run for logs.
+
+• Branch must be main (or edit the workflow YAML to match your branch name).
