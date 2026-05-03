@@ -309,14 +309,10 @@ function render() {
   const syncActions =
     S.syncStatus === 'synced'
       ? '<p class="help-box" style="margin-top:0.5rem;font-size:0.82rem;background:#1a3a1a;border-left:3px solid #5ecf8a">✓ Connected via peer-to-peer WebRTC — dice rolls and answers sync automatically!</p>'
-      : `<button type="button" class="btn-ghost" id="btn-reconnect" style="margin-top:0.35rem">Retry connection</button>
-         <p class="help-box" style="margin-top:0.5rem;font-size:0.82rem;background:#4a1a1a;border-left:3px solid #ff6b7a">
-           <strong>⚠️ Your network blocks WebSocket connections (common with firewalls/ISPs)</strong><br>
-           Real-time sync is impossible without WebSocket. <strong>Working solutions:</strong><br>
-           <strong>1. Mobile hotspot:</strong> One phone creates hotspot, other connects → same network → sync works!<br>
-           <strong>2. Same device:</strong> Both players use ONE device, taking turns answering<br>
-           <strong>3. Export/Import:</strong> Use buttons below to manually sync game state<br>
-           <strong>4. Try different WiFi</strong> where WebSockets aren't blocked
+      : `<p class="help-box" style="margin-top:0.5rem;font-size:0.82rem;background:#4a1a1a;border-left:3px solid #ff6b7a">
+           <strong>⚠️ Auto-sync unavailable (WebSocket blocked by network)</strong><br>
+           <strong>Use QR Code sync instead:</strong> Tap <strong>"📱 Share via QR Code"</strong> button below → 
+           partner scans QR with camera → game syncs instantly! Works across different networks with no connection needed.
          </p>`;
 
   const activeCat =
@@ -434,12 +430,17 @@ function render() {
         ${answersHint}
         <div class="tool-row">
           <button type="button" class="btn-ghost" id="btn-another">New card — same category</button>
+          <button type="button" class="btn-primary" id="btn-qr-sync">📱 Share via QR Code</button>
           <button type="button" class="btn-ghost" id="btn-export">Export backup</button>
           <label class="btn-ghost" style="cursor:pointer;margin:0;display:inline-flex;align-items:center;">
             Import backup
             <input type="file" id="import-file" accept="application/json" class="a11y-hide" />
           </label>
         </div>
+        <p class="help-box" style="margin-top:0.5rem;font-size:0.85rem;background:#1a3a1a;border-left:3px solid #5ecf8a">
+          <strong>🎯 Best for different networks:</strong> Tap <strong>"Share via QR Code"</strong> button above → 
+          partner scans QR with their camera → game syncs instantly! Works across any networks.
+        </p>
       </div>
     </div>`
       : '';
@@ -461,16 +462,18 @@ function render() {
     ${dashboardHtml}
     <div class="panel">
       <p class="sub" style="margin:0;">
-        <strong>How it works:</strong> Uses WebRTC for direct peer-to-peer sync between devices (works across different networks!). 
-        Both devices must use the <em>exact same room code</em> and be online at the same time. 
-        If connection fails, use <strong>Export/Import backup</strong> to manually sync.
+        <strong>Different networks?</strong> Use the <strong>📱 Share via QR Code</strong> button (works instantly across any networks). 
+        One device taps the button → generates QR code → partner scans with camera → synced!
       </p>
       <button type="button" class="btn-ghost" id="btn-leave">Leave room</button>
     </div>
     ` : ''}
 
     <dialog id="legend-dlg" class="legend-dialog"></dialog>
-    <footer class="note">Private — runs in your browser. Sync uses WebRTC peer-to-peer (data stays between your devices only).</footer>
+    <dialog id="qr-dlg" class="legend-dialog" style="max-width:90vw;width:420px">
+      <div id="qr-content"></div>
+    </dialog>
+    <footer class="note">Private — runs in your browser. For different networks: use QR Code sync (scan with camera).</footer>
   `;
 
   wire(S.room, q, activeCat);
@@ -645,6 +648,60 @@ function wire(hasRoom, q, activeCat) {
     URL.revokeObjectURL(a.href);
   });
 
+  document.getElementById('btn-qr-sync')?.addEventListener('click', async () => {
+    const qrDlg = document.getElementById('qr-dlg');
+    const qrContent = document.getElementById('qr-content');
+    if (!qrDlg || !qrContent) return;
+
+    const data = JSON.stringify({ ...S, savedAt: Date.now() });
+    const compressed = btoa(encodeURIComponent(data).replace(/%([0-9A-F]{2})/g, 
+      (_, p1) => String.fromCharCode(parseInt(p1, 16))));
+    
+    // Generate shareable URL
+    const shareUrl = `${location.origin}${location.pathname}?import=${compressed}`;
+    
+    qrContent.innerHTML = `
+      <article style="text-align:center">
+        <h3>📱 Scan to Sync</h3>
+        <div id="qr-code" style="margin:1rem auto;background:white;padding:1rem;border-radius:8px;display:inline-block"></div>
+        <p style="font-size:0.9rem;color:#8b95a8;margin:0.5rem 0">Partner: scan this QR code with your camera app</p>
+        <p style="font-size:0.85rem;margin:1rem 0">Or copy link:<br>
+          <input type="text" readonly value="${shareUrl}" 
+            style="width:100%;font-size:0.75rem;margin-top:0.5rem" 
+            onclick="this.select()">
+        </p>
+      </article>
+      <footer><button type="button" class="btn-ghost" id="qr-close">Close</button></footer>
+    `;
+    
+    qrDlg.showModal();
+    
+    // Load QR code library and generate
+    try {
+      const QRCode = (await import('https://esm.sh/qrcode@1.5.3')).default;
+      await QRCode.toCanvas(document.createElement('canvas'), shareUrl, {
+        width: 256,
+        margin: 2,
+        color: { dark: '#000000', light: '#ffffff' }
+      }).then(canvas => {
+        const qrDiv = document.getElementById('qr-code');
+        if (qrDiv) {
+          qrDiv.innerHTML = '';
+          qrDiv.appendChild(canvas);
+        }
+      });
+    } catch (e) {
+      console.error('QR generation failed:', e);
+      document.getElementById('qr-code').innerHTML = '<p>QR generation failed. Use the link below.</p>';
+    }
+    
+    document.getElementById('qr-close')?.addEventListener('click', () => qrDlg.close());
+  });
+    a.download = `partner-game-${S.room}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+
   document.getElementById('import-file')?.addEventListener('change', (ev) => {
     const f = ev.target.files?.[0];
     if (!f) return;
@@ -813,6 +870,35 @@ async function connectYjs() {
 
 function boot() {
   appEl = document.getElementById('app');
+  
+  // Check if URL has import parameter (from QR code)
+  const params = new URLSearchParams(location.search);
+  const importData = params.get('import');
+  if (importData) {
+    try {
+      const decompressed = decodeURIComponent(atob(importData).split('').map(c => 
+        '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+      const imported = JSON.parse(decompressed);
+      
+      if (imported.room) S.room = imported.room;
+      if (imported.myRole) S.myRole = imported.myRole;
+      if (imported.p1Name) S.p1Name = imported.p1Name;
+      if (imported.p2Name) S.p2Name = imported.p2Name;
+      if (imported.session) S.session = { ...S.session, ...imported.session };
+      if (imported.answers) S.answers = imported.answers;
+      
+      persist();
+      
+      // Clean URL
+      history.replaceState({}, '', `${location.pathname}?room=${encodeURIComponent(S.room)}`);
+      
+      alert('✅ Game synced via QR code! You can now see your partner\'s dice roll and answers.');
+    } catch (e) {
+      console.error('Failed to import from QR code:', e);
+      alert('❌ Failed to import data from QR code');
+    }
+  }
+  
   render();
 }
 
