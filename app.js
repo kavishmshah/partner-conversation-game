@@ -3,6 +3,9 @@ import { CATEGORIES, CATEGORY_BY_DICE, findQuestion } from './questions-index.js
 const LS_PREFIX = 'pcg-v1';
 const SYNC_URL = 'wss://demos.yjs.dev';
 
+// Note: If WebSocket sync fails (firewall/network blocking), the game still works!
+// Use Export/Import buttons to manually sync between devices.
+
 /**
  * Your shared room code — both phones use this when you leave the field as-is.
  * Change the string to whatever you like (letters, numbers, dashes).
@@ -297,16 +300,16 @@ function render() {
       ? '<span class="badge sync">Cloud sync on</span>'
       : S.syncStatus === 'connecting'
         ? '<span class="badge">Connecting…</span>'
-        : '<span class="badge offline">Not connected — answers stay on this device only</span>';
+        : '<span class="badge offline">Local mode — use Export/Import to sync</span>';
   const syncActions =
     S.syncStatus === 'synced'
       ? ''
-      : `<button type="button" class="btn-ghost" id="btn-reconnect" style="margin-top:0.35rem">Retry sync</button>
-         <p class="help-box" style="margin-top:0.5rem;font-size:0.82rem">
-           <strong>Troubleshooting:</strong> If sync won't connect, try: (1) Disable ad blockers, (2) Switch to WiFi, 
-           (3) Check browser console (F12) for errors, (4) Try a different browser. 
-           The sync server (<code class="code-tag">wss://demos.yjs.dev</code>) may be blocked by your network.
-           You can still play locally on each device and use <strong>Export/Import backup</strong> to manually share answers.
+      : `<button type="button" class="btn-ghost" id="btn-reconnect" style="margin-top:0.35rem">Retry cloud sync</button>
+         <p class="help-box" style="margin-top:0.5rem;font-size:0.82rem;background:#1a3a1a;border-left:3px solid #5ecf8a">
+           <strong>✓ Game works perfectly in local mode!</strong><br>
+           WebSocket sync is blocked by your network/firewall (common with corporate/residential networks).<br>
+           <strong>To sync between devices:</strong> Use <strong>Export backup</strong> button below → send file to partner → they use <strong>Import backup</strong>.<br>
+           Or both play on same device taking turns!
          </p>`;
 
   const activeCat =
