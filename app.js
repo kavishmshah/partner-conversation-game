@@ -305,15 +305,18 @@ function render() {
       ? '<span class="badge sync">P2P sync active</span>'
       : S.syncStatus === 'connecting'
         ? '<span class="badge">Waiting for partner…</span>'
-        : '<span class="badge offline">Local mode — use Export/Import to sync</span>';
+        : '<span class="badge offline">Network blocks WebSocket — try mobile hotspot</span>';
   const syncActions =
     S.syncStatus === 'synced'
       ? '<p class="help-box" style="margin-top:0.5rem;font-size:0.82rem;background:#1a3a1a;border-left:3px solid #5ecf8a">✓ Connected via peer-to-peer WebRTC — dice rolls and answers sync automatically!</p>'
       : `<button type="button" class="btn-ghost" id="btn-reconnect" style="margin-top:0.35rem">Retry connection</button>
-         <p class="help-box" style="margin-top:0.5rem;font-size:0.82rem;background:#3a3a1a;border-left:3px solid #f0c14a">
-           <strong>⏳ Waiting for partner to join...</strong><br>
-           Make sure your partner opens the SAME room code on their device. Uses WebRTC peer-to-peer (works across different networks!).<br>
-           Both devices must be online at the same time. If connection fails, use <strong>Export/Import backup</strong> buttons below.
+         <p class="help-box" style="margin-top:0.5rem;font-size:0.82rem;background:#4a1a1a;border-left:3px solid #ff6b7a">
+           <strong>⚠️ Your network blocks WebSocket connections (common with firewalls/ISPs)</strong><br>
+           Real-time sync is impossible without WebSocket. <strong>Working solutions:</strong><br>
+           <strong>1. Mobile hotspot:</strong> One phone creates hotspot, other connects → same network → sync works!<br>
+           <strong>2. Same device:</strong> Both players use ONE device, taking turns answering<br>
+           <strong>3. Export/Import:</strong> Use buttons below to manually sync game state<br>
+           <strong>4. Try different WiFi</strong> where WebSockets aren't blocked
          </p>`;
 
   const activeCat =
@@ -692,7 +695,6 @@ async function connectYjs() {
       provider = new WebrtcProvider(roomId, ydoc, {
         signaling: WEBRTC_SIGNALING,
         password: null,
-        awareness: null,
         maxConns: 20,
         filterBcConns: true,
         peerOpts: {}
