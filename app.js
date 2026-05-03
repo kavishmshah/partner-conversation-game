@@ -673,7 +673,6 @@ async function connectYjs() {
     console.log(`[Sync] Connecting to ${SYNC_URL} with room: ${roomId}`);
     provider = new WebsocketProvider(SYNC_URL, roomId, ydoc, {
       connect: true,
-      awareness: null,
       resyncInterval: 5000,
       maxBackoffTime: 2500,
     });
