@@ -671,11 +671,10 @@ async function connectYjs() {
     ydoc = new Y.Doc();
     const roomId = yjsDocRoomId();
     console.log(`[Sync] Connecting to ${SYNC_URL} with room: ${roomId}`);
-    provider = new WebsocketProvider(SYNC_URL, roomId, ydoc, {
-      connect: true,
-      resyncInterval: 5000,
-      maxBackoffTime: 2500,
-    });
+    
+    // Create provider with minimal options - let library handle defaults
+    provider = new WebsocketProvider(SYNC_URL, roomId, ydoc);
+    
     yAnswers = ydoc.getMap('answers');
     yMeta = ydoc.getMap('meta');
     ySession = ydoc.getMap('session');
