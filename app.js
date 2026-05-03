@@ -153,13 +153,36 @@ function mirrorToLocalFromY() {
   });
 }
 
+function sessionHasActiveCard() {
+  return (
+    S.session.dice >= 1 &&
+    S.session.dice <= 6 &&
+    Boolean(S.session.categoryId) &&
+    Boolean(S.session.questionId)
+  );
+}
+
 function pushLocalIntoY() {
   if (!yAnswers || !yMeta || !ySession) return;
   if (S.p1Name) yMeta.set('p1Name', S.p1Name);
   if (S.p2Name) yMeta.set('p2Name', S.p2Name);
-  ySession.set('dice', S.session.dice);
-  ySession.set('categoryId', S.session.categoryId);
-  ySession.set('questionId', S.session.questionId);
+  /**
+   * Never publish an “empty” session (dice 0 / no card). That was overwriting a partner’s
+   * roll when the second device joined or synced — same bug as different dice on each phone.
+   */
+  if (sessionHasActiveCard()) {
+    if (ydoc) {
+      ydoc.transact(() => {
+        ySession.set('dice', S.session.dice);
+        ySession.set('categoryId', S.session.categoryId);
+        ySession.set('questionId', S.session.questionId);
+      });
+    } else {
+      ySession.set('dice', S.session.dice);
+      ySession.set('categoryId', S.session.categoryId);
+      ySession.set('questionId', S.session.questionId);
+    }
+  }
 
   ['p1', 'p2'].forEach((role) => {
     const byCat = S.answers[role] || {};
@@ -210,7 +233,13 @@ function applyDice(d) {
   S.session.questionId = pickRandomQuestion(cat.id);
   /* Flip to question happens after a short delay in the dice handler (local). */
   S.cardFlipped = false;
-  if (ySession) {
+  if (ySession && ydoc) {
+    ydoc.transact(() => {
+      ySession.set('dice', d);
+      ySession.set('categoryId', cat.id);
+      ySession.set('questionId', S.session.questionId);
+    });
+  } else if (ySession) {
     ySession.set('dice', d);
     ySession.set('categoryId', cat.id);
     ySession.set('questionId', S.session.questionId);
@@ -272,7 +301,13 @@ function render() {
   const syncActions =
     S.syncStatus === 'synced'
       ? ''
-      : `<button type="button" class="btn-ghost" id="btn-reconnect" style="margin-top:0.35rem">Retry sync</button>`;
+      : `<button type="button" class="btn-ghost" id="btn-reconnect" style="margin-top:0.35rem">Retry sync</button>
+         <p class="help-box" style="margin-top:0.5rem;font-size:0.82rem">
+           <strong>Troubleshooting:</strong> If sync won't connect, try: (1) Disable ad blockers, (2) Switch to WiFi, 
+           (3) Check browser console (F12) for errors, (4) Try a different browser. 
+           The sync server (<code class="code-tag">wss://demos.yjs.dev</code>) may be blocked by your network.
+           You can still play locally on each device and use <strong>Export/Import backup</strong> to manually share answers.
+         </p>`;
 
   const activeCat =
     S.session.categoryId && S.session.questionId
@@ -366,6 +401,7 @@ function render() {
         <div class="die ${S.rolling ? 'rolling' : ''}" aria-live="polite">${S.session.dice >= 1 ? S.session.dice : '•'}</div>
         <button type="button" class="btn-dice" id="btn-dice" ${S.rolling ? 'disabled' : ''}>Dice Roll!</button>
       </div>
+      <p class="help-box"><strong>One device taps Dice Roll!</strong> — both screens share that roll (avoid rolling at the same time on both phones).</p>
       <p class="help-box">Die shows <strong>1–6</strong>. Each number maps to a category below. Your answer choices stay <strong>below the card</strong> so nothing is covered.</p>
       <div class="category-strip">${catChips}</div>
       <p class="sub" style="margin:0.25rem 0 0;">Legend: tap a category chip for a short description.</p>
@@ -541,7 +577,13 @@ function wire(hasRoom, q, activeCat) {
     if (!S.session.categoryId) return;
     S.session.questionId = pickRandomQuestion(S.session.categoryId);
     S.cardFlipped = false;
-    if (ySession) ySession.set('questionId', S.session.questionId);
+    if (ySession && ydoc) {
+      ydoc.transact(() => {
+        ySession.set('questionId', S.session.questionId);
+      });
+    } else if (ySession) {
+      ySession.set('questionId', S.session.questionId);
+    }
     persist();
     render();
     await new Promise((r) => setTimeout(r, FLIP_AFTER_ROLL_MS));
@@ -620,6 +662,7 @@ async function connectYjs() {
   render();
 
   try {
+    console.log('[Sync] Loading Yjs libraries...');
     const Y = await import('https://esm.sh/yjs@13.6.18');
     const mod = await import('https://esm.sh/y-websocket@1.5.0?deps=yjs@13.6.18');
     const WebsocketProvider = mod.WebsocketProvider || mod.default?.WebsocketProvider || mod.default;
@@ -627,7 +670,13 @@ async function connectYjs() {
 
     ydoc = new Y.Doc();
     const roomId = yjsDocRoomId();
-    provider = new WebsocketProvider(SYNC_URL, roomId, ydoc);
+    console.log(`[Sync] Connecting to ${SYNC_URL} with room: ${roomId}`);
+    provider = new WebsocketProvider(SYNC_URL, roomId, ydoc, {
+      connect: true,
+      awareness: null,
+      resyncInterval: 5000,
+      maxBackoffTime: 2500,
+    });
     yAnswers = ydoc.getMap('answers');
     yMeta = ydoc.getMap('meta');
     ySession = ydoc.getMap('session');
@@ -640,30 +689,43 @@ async function connectYjs() {
     ydoc.on('afterTransaction', afterTxn);
 
     provider.on('status', (ev) => {
+      console.log(`[Sync] Status changed: ${ev.status}`);
       if (ev.status === 'connected') {
         if (connectSlowTimer) {
           clearTimeout(connectSlowTimer);
           connectSlowTimer = null;
         }
         S.syncStatus = 'synced';
+        console.log('[Sync] ✅ Successfully connected!');
       } else if (ev.status === 'disconnected') {
         S.syncStatus = 'offline';
+        console.warn('[Sync] ⚠️ Disconnected from server');
       }
       render();
     });
 
     provider.on('sync', (synced) => {
+      console.log(`[Sync] Sync event: ${synced ? 'synced' : 'not synced'}`);
       if (!synced) return;
-      pushLocalIntoY();
       mirrorToLocalFromY();
       if (S.myRole === 'p1' && S.p1Name) yMeta.set('p1Name', S.p1Name);
       if (S.myRole === 'p2' && S.p2Name) yMeta.set('p2Name', S.p2Name);
+      pushLocalIntoY();
       mirrorToLocalFromY();
       S.syncStatus = 'synced';
       render();
       persist();
     });
 
+    provider.on('connection-error', (err) => {
+      console.error('[Sync] Connection error:', err);
+    });
+
+    provider.on('connection-close', (ev) => {
+      console.warn('[Sync] Connection closed:', ev);
+    });
+
+    mirrorToLocalFromY();
     if (S.myRole === 'p1' && S.p1Name) yMeta.set('p1Name', S.p1Name);
     if (S.myRole === 'p2' && S.p2Name) yMeta.set('p2Name', S.p2Name);
     pushLocalIntoY();
@@ -672,13 +734,15 @@ async function connectYjs() {
 
     connectSlowTimer = setTimeout(() => {
       if (S.syncStatus === 'connecting') {
+        console.error('[Sync] ❌ Connection timeout after 15s - server may be unreachable');
+        console.log('[Sync] Troubleshooting: Check if wss://demos.yjs.dev is accessible, try disabling ad blockers, or switch to WiFi');
         S.syncStatus = 'offline';
         render();
       }
       connectSlowTimer = null;
     }, 15000);
   } catch (e) {
-    console.warn(e);
+    console.error('[Sync] Error during connection setup:', e);
     S.syncStatus = 'offline';
     disconnectYjs();
     render();
