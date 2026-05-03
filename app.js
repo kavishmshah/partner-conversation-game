@@ -309,10 +309,11 @@ function render() {
   const syncActions =
     S.syncStatus === 'synced'
       ? '<p class="help-box" style="margin-top:0.5rem;font-size:0.82rem;background:#1a3a1a;border-left:3px solid #5ecf8a">✓ Connected via peer-to-peer WebRTC — dice rolls and answers sync automatically!</p>'
-      : `<p class="help-box" style="margin-top:0.5rem;font-size:0.82rem;background:#4a1a1a;border-left:3px solid #ff6b7a">
-           <strong>⚠️ Auto-sync unavailable (WebSocket blocked by network)</strong><br>
-           <strong>Use QR Code sync instead:</strong> Tap <strong>"📱 Share via QR Code"</strong> button below → 
-           partner scans QR with camera → game syncs instantly! Works across different networks with no connection needed.
+      : `<p class="help-box" style="margin-top:0.5rem;font-size:0.82rem;background:#3a3a1a;border-left:3px solid #f0c14a">
+           <strong>📱 Two Ways to Play:</strong><br>
+           <strong>1. EASIEST - Same Device:</strong> Sit together, one device, take turns answering. No syncing needed!<br>
+           <strong>2. Different Devices/Networks:</strong> Each person plays independently (answer same questions). 
+           When done, go to "Compatibility" tab → one person taps "📱 Share/Sync via QR" → other scans → see your match!
          </p>`;
 
   const activeCat =
@@ -399,8 +400,9 @@ function render() {
         <span style="text-align:right">${stat}</span>
       </div>
       <p class="sub" style="margin:0.35rem 0 0;font-size:0.82rem">
-        Room: <code class="code-tag">${escapeHtml(yjsDocRoomId())}</code>
-        — both devices auto-sync via WebRTC peer-to-peer. Same room code, one device is Player 1, other is Player 2.
+        Room: <code class="code-tag">${escapeHtml(yjsDocRoomId())}</code><br>
+        Playing together on same device? Both select your roles below and take turns!<br>
+        Playing on separate devices? Each answer independently, then compare at the end.
       </p>
       ${syncActions}
       <div class="dice-zone">
@@ -428,19 +430,20 @@ function render() {
       <div class="answer-deck">
         <h4>Choose answers (multiple choice)</h4>
         ${answersHint}
+        <p class="help-box" style="margin-top:0.5rem;font-size:0.9rem;background:#1a3a1a;border-left:3px solid #5ecf8a">
+          <strong>💡 Playing on different devices?</strong> Each person can play independently! 
+          Just make sure you answer the <strong>same questions</strong>. When done, tap <strong>"Compatibility"</strong> 
+          tab and one person shares their QR code → other scans it → see your match percentage!
+        </p>
         <div class="tool-row">
           <button type="button" class="btn-ghost" id="btn-another">New card — same category</button>
-          <button type="button" class="btn-primary" id="btn-qr-sync">📱 Share via QR Code</button>
-          <button type="button" class="btn-ghost" id="btn-export">Export backup</button>
+          <button type="button" class="btn-primary" id="btn-qr-sync">📱 Share/Sync via QR</button>
+          <button type="button" class="btn-ghost" id="btn-export">Export JSON</button>
           <label class="btn-ghost" style="cursor:pointer;margin:0;display:inline-flex;align-items:center;">
-            Import backup
+            Import JSON
             <input type="file" id="import-file" accept="application/json" class="a11y-hide" />
           </label>
         </div>
-        <p class="help-box" style="margin-top:0.5rem;font-size:0.85rem;background:#1a3a1a;border-left:3px solid #5ecf8a">
-          <strong>🎯 Best for different networks:</strong> Tap <strong>"Share via QR Code"</strong> button above → 
-          partner scans QR with their camera → game syncs instantly! Works across any networks.
-        </p>
       </div>
     </div>`
       : '';
@@ -462,8 +465,9 @@ function render() {
     ${dashboardHtml}
     <div class="panel">
       <p class="sub" style="margin:0;">
-        <strong>Different networks?</strong> Use the <strong>📱 Share via QR Code</strong> button (works instantly across any networks). 
-        One device taps the button → generates QR code → partner scans with camera → synced!
+        <strong>🎮 How to play with your partner:</strong><br>
+        <strong>Option 1 (Recommended):</strong> Use ONE device together - both join same room, take turns rolling dice and answering. Super simple!<br>
+        <strong>Option 2:</strong> Separate devices - each plays independently, then share QR code once to compare compatibility scores.
       </p>
       <button type="button" class="btn-ghost" id="btn-leave">Leave room</button>
     </div>
@@ -473,7 +477,7 @@ function render() {
     <dialog id="qr-dlg" class="legend-dialog" style="max-width:90vw;width:420px">
       <div id="qr-content"></div>
     </dialog>
-    <footer class="note">Private — runs in your browser. For different networks: use QR Code sync (scan with camera).</footer>
+    <footer class="note">💡 Tip: Easiest way = use ONE device together! Or play separately and compare scores with QR code at the end.</footer>
   `;
 
   wire(S.room, q, activeCat);
@@ -662,12 +666,14 @@ function wire(hasRoom, q, activeCat) {
     
     qrContent.innerHTML = `
       <article style="text-align:center">
-        <h3>📱 Scan to Sync</h3>
+        <h3>📱 Share Game State</h3>
         <div id="qr-code" style="margin:1rem auto;background:white;padding:1rem;border-radius:8px;display:inline-block"></div>
-        <p style="font-size:0.9rem;color:#8b95a8;margin:0.5rem 0">Partner: scan this QR code with your camera app</p>
-        <p style="font-size:0.85rem;margin:1rem 0">Or copy link:<br>
+        <p style="font-size:0.9rem;color:#8b95a8;margin:0.5rem 0">
+          Partner: scan this with your camera to sync all answers and questions
+        </p>
+        <p style="font-size:0.85rem;margin:1rem 0">Or copy and send the link:<br>
           <input type="text" readonly value="${shareUrl}" 
-            style="width:100%;font-size:0.75rem;margin-top:0.5rem" 
+            style="width:100%;font-size:0.75rem;margin-top:0.5rem;padding:0.5rem" 
             onclick="this.select()">
         </p>
       </article>
