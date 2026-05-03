@@ -47,6 +47,48 @@ let yMeta = null;
 let ySession = null;
 let provider = null;
 let afterTxn = null;
+let connectSlowTimer = null;
+
+/** Same room string on both phones after join (lowercase, no spaces). */
+function normalizeRoomCode(raw) {
+  return String(raw || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9_-]/g, '')
+    .slice(0, 40);
+}
+
+function yjsDocRoomId() {
+  return S.room ? `pcg-${S.room}` : '';
+}
+
+function disconnectYjs() {
+  if (connectSlowTimer) {
+    clearTimeout(connectSlowTimer);
+    connectSlowTimer = null;
+  }
+  if (provider) {
+    try {
+      provider.destroy();
+    } catch (e) {
+      /* ignore */
+    }
+    provider = null;
+  }
+  if (ydoc && afterTxn) {
+    try {
+      ydoc.off('afterTransaction', afterTxn);
+    } catch (e) {
+      /* ignore */
+    }
+  }
+  afterTxn = null;
+  ydoc = null;
+  yAnswers = null;
+  yMeta = null;
+  ySession = null;
+}
 
 function storageKey() {
   return `${LS_PREFIX}:${S.room}`;
@@ -226,7 +268,11 @@ function render() {
       ? '<span class="badge sync">Cloud sync on</span>'
       : S.syncStatus === 'connecting'
         ? '<span class="badge">Connecting…</span>'
-        : '<span class="badge offline">Local / sync unavailable</span>';
+        : '<span class="badge offline">Not connected — answers stay on this device only</span>';
+  const syncActions =
+    S.syncStatus === 'synced'
+      ? ''
+      : `<button type="button" class="btn-ghost" id="btn-reconnect" style="margin-top:0.35rem">Retry sync</button>`;
 
   const activeCat =
     S.session.categoryId && S.session.questionId
@@ -307,10 +353,15 @@ function render() {
     S.tab === 'play'
       ? `
     <div class="panel">
-      <div class="row" style="justify-content:space-between">
+      <div class="row" style="justify-content:space-between;align-items:flex-start">
         <span>Room: <strong>${escapeHtml(S.room)}</strong></span>
-        ${stat}
+        <span style="text-align:right">${stat}</span>
       </div>
+      <p class="sub" style="margin:0.35rem 0 0;font-size:0.82rem">
+        Live channel: <code class="code-tag">${escapeHtml(yjsDocRoomId())}</code>
+        — both phones must show <strong>Cloud sync on</strong>. Same room name, Player 1 on one device and Player 2 on the other.
+      </p>
+      ${syncActions}
       <div class="dice-zone">
         <div class="die ${S.rolling ? 'rolling' : ''}" aria-live="polite">${S.session.dice >= 1 ? S.session.dice : '•'}</div>
         <button type="button" class="btn-dice" id="btn-dice" ${S.rolling ? 'disabled' : ''}>Dice Roll!</button>
@@ -364,8 +415,7 @@ function render() {
     ${dashboardHtml}
     <div class="panel">
       <p class="sub" style="margin:0;">
-        <strong>Long distance:</strong> both join the same room code. Answers sync when cloud sync is on.
-        If sync shows unavailable, use <strong>Export backup</strong> and send the file, or serve this folder from HTTPS and check browser extensions / firewall.
+        <strong>Long distance:</strong> use the <em>exact</em> same room (copy from the game URL or agree on a code). Sync uses a free public relay (<code class="code-tag">demos.yjs.dev</code>) — some mobile networks or ad blockers block it; try Wi‑Fi, tap <strong>Retry sync</strong>, or use <strong>Export backup</strong>.
       </p>
       <button type="button" class="btn-ghost" id="btn-leave">Leave room</button>
     </div>
@@ -432,14 +482,13 @@ function wire(hasRoom, q, activeCat) {
 
   document.getElementById('btn-join')?.addEventListener('click', () => {
     const fromInput = document.getElementById('in-room')?.value?.trim();
-    const room = USE_FIXED_ROOM_ONLY
-      ? FIXED_ROOM_CODE.slice(0, 40)
-      : (fromInput || FIXED_ROOM_CODE).slice(0, 40);
+    const rawRoom = USE_FIXED_ROOM_ONLY ? FIXED_ROOM_CODE : fromInput || FIXED_ROOM_CODE;
+    const room = normalizeRoomCode(rawRoom);
     const myName = document.getElementById('in-myname')?.value?.trim();
     const partner = document.getElementById('in-partner')?.value?.trim();
     const role = document.getElementById('in-role')?.value;
     if (!room || !myName || !role) {
-      alert('Please enter your name and player role. Set FIXED_ROOM_CODE in app.js if you hide the room field.');
+      alert('Please enter your name and player role. Use letters/numbers/dashes in the room code.');
       return;
     }
     S.room = room;
@@ -518,17 +567,12 @@ function wire(hasRoom, q, activeCat) {
     });
   });
 
+  document.getElementById('btn-reconnect')?.addEventListener('click', () => {
+    connectYjs();
+  });
+
   document.getElementById('btn-leave')?.addEventListener('click', () => {
-    if (provider) {
-      provider.destroy();
-      provider = null;
-    }
-    if (ydoc && afterTxn) ydoc.off('afterTransaction', afterTxn);
-    ydoc = null;
-    yAnswers = null;
-    yMeta = null;
-    ySession = null;
-    afterTxn = null;
+    disconnectYjs();
     S.room = '';
     S.myRole = '';
     S.syncStatus = 'idle';
@@ -571,17 +615,18 @@ function wire(hasRoom, q, activeCat) {
 }
 
 async function connectYjs() {
+  disconnectYjs();
   S.syncStatus = 'connecting';
   render();
 
   try {
     const Y = await import('https://esm.sh/yjs@13.6.18');
-    const mod = await import('https://esm.sh/y-websocket@1.5.0');
+    const mod = await import('https://esm.sh/y-websocket@1.5.0?deps=yjs@13.6.18');
     const WebsocketProvider = mod.WebsocketProvider || mod.default?.WebsocketProvider || mod.default;
-    if (!WebsocketProvider) throw new Error('no provider');
+    if (!WebsocketProvider) throw new Error('WebsocketProvider not found');
 
     ydoc = new Y.Doc();
-    const roomId = `pcg-${S.room.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48)}`;
+    const roomId = yjsDocRoomId();
     provider = new WebsocketProvider(SYNC_URL, roomId, ydoc);
     yAnswers = ydoc.getMap('answers');
     yMeta = ydoc.getMap('meta');
@@ -595,8 +640,15 @@ async function connectYjs() {
     ydoc.on('afterTransaction', afterTxn);
 
     provider.on('status', (ev) => {
-      if (ev.status === 'connected') S.syncStatus = 'synced';
-      else if (ev.status === 'disconnected') S.syncStatus = 'offline';
+      if (ev.status === 'connected') {
+        if (connectSlowTimer) {
+          clearTimeout(connectSlowTimer);
+          connectSlowTimer = null;
+        }
+        S.syncStatus = 'synced';
+      } else if (ev.status === 'disconnected') {
+        S.syncStatus = 'offline';
+      }
       render();
     });
 
@@ -615,20 +667,20 @@ async function connectYjs() {
     if (S.myRole === 'p1' && S.p1Name) yMeta.set('p1Name', S.p1Name);
     if (S.myRole === 'p2' && S.p2Name) yMeta.set('p2Name', S.p2Name);
     pushLocalIntoY();
-
-    S.syncStatus = 'synced';
     mirrorToLocalFromY();
     render();
-    persist();
+
+    connectSlowTimer = setTimeout(() => {
+      if (S.syncStatus === 'connecting') {
+        S.syncStatus = 'offline';
+        render();
+      }
+      connectSlowTimer = null;
+    }, 15000);
   } catch (e) {
     console.warn(e);
     S.syncStatus = 'offline';
-    ydoc = null;
-    yAnswers = null;
-    yMeta = null;
-    ySession = null;
-    provider = null;
-    afterTxn = null;
+    disconnectYjs();
     render();
   }
 }
