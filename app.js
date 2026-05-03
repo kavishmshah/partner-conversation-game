@@ -703,10 +703,6 @@ function wire(hasRoom, q, activeCat) {
     
     document.getElementById('qr-close')?.addEventListener('click', () => qrDlg.close());
   });
-    a.download = `partner-game-${S.room}.json`;
-    a.click();
-    URL.revokeObjectURL(a.href);
-  });
 
   document.getElementById('import-file')?.addEventListener('change', (ev) => {
     const f = ev.target.files?.[0];
