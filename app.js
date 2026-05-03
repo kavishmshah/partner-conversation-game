@@ -2,9 +2,14 @@ import { CATEGORIES, CATEGORY_BY_DICE, findQuestion } from './questions-index.js
 
 const LS_PREFIX = 'pcg-v1';
 const SYNC_URL = 'wss://demos.yjs.dev';
+const USE_WEBRTC = true; // Use WebRTC peer-to-peer instead of WebSocket (works across different networks!)
 
-// Note: If WebSocket sync fails (firewall/network blocking), the game still works!
-// Use Export/Import buttons to manually sync between devices.
+// WebRTC signaling servers (for initial peer discovery only)
+const WEBRTC_SIGNALING = [
+  'wss://signaling.yjs.dev',
+  'wss://y-webrtc-signaling-eu.herokuapp.com',
+  'wss://y-webrtc-signaling-us.herokuapp.com'
+];
 
 /**
  * Your shared room code — both phones use this when you leave the field as-is.
@@ -297,19 +302,18 @@ function render() {
   if (!appEl) return;
   const stat =
     S.syncStatus === 'synced'
-      ? '<span class="badge sync">Cloud sync on</span>'
+      ? '<span class="badge sync">P2P sync active</span>'
       : S.syncStatus === 'connecting'
-        ? '<span class="badge">Connecting…</span>'
+        ? '<span class="badge">Waiting for partner…</span>'
         : '<span class="badge offline">Local mode — use Export/Import to sync</span>';
   const syncActions =
     S.syncStatus === 'synced'
-      ? ''
-      : `<button type="button" class="btn-ghost" id="btn-reconnect" style="margin-top:0.35rem">Retry cloud sync</button>
-         <p class="help-box" style="margin-top:0.5rem;font-size:0.82rem;background:#1a3a1a;border-left:3px solid #5ecf8a">
-           <strong>✓ Game works perfectly in local mode!</strong><br>
-           WebSocket sync is blocked by your network/firewall (common with corporate/residential networks).<br>
-           <strong>To sync between devices:</strong> Use <strong>Export backup</strong> button below → send file to partner → they use <strong>Import backup</strong>.<br>
-           Or both play on same device taking turns!
+      ? '<p class="help-box" style="margin-top:0.5rem;font-size:0.82rem;background:#1a3a1a;border-left:3px solid #5ecf8a">✓ Connected via peer-to-peer WebRTC — dice rolls and answers sync automatically!</p>'
+      : `<button type="button" class="btn-ghost" id="btn-reconnect" style="margin-top:0.35rem">Retry connection</button>
+         <p class="help-box" style="margin-top:0.5rem;font-size:0.82rem;background:#3a3a1a;border-left:3px solid #f0c14a">
+           <strong>⏳ Waiting for partner to join...</strong><br>
+           Make sure your partner opens the SAME room code on their device. Uses WebRTC peer-to-peer (works across different networks!).<br>
+           Both devices must be online at the same time. If connection fails, use <strong>Export/Import backup</strong> buttons below.
          </p>`;
 
   const activeCat =
@@ -396,8 +400,8 @@ function render() {
         <span style="text-align:right">${stat}</span>
       </div>
       <p class="sub" style="margin:0.35rem 0 0;font-size:0.82rem">
-        Live channel: <code class="code-tag">${escapeHtml(yjsDocRoomId())}</code>
-        — both phones must show <strong>Cloud sync on</strong>. Same room name, Player 1 on one device and Player 2 on the other.
+        Room: <code class="code-tag">${escapeHtml(yjsDocRoomId())}</code>
+        — both devices auto-sync via WebRTC peer-to-peer. Same room code, one device is Player 1, other is Player 2.
       </p>
       ${syncActions}
       <div class="dice-zone">
@@ -454,14 +458,16 @@ function render() {
     ${dashboardHtml}
     <div class="panel">
       <p class="sub" style="margin:0;">
-        <strong>Long distance:</strong> use the <em>exact</em> same room (copy from the game URL or agree on a code). Sync uses a free public relay (<code class="code-tag">demos.yjs.dev</code>) — some mobile networks or ad blockers block it; try Wi‑Fi, tap <strong>Retry sync</strong>, or use <strong>Export backup</strong>.
+        <strong>How it works:</strong> Uses WebRTC for direct peer-to-peer sync between devices (works across different networks!). 
+        Both devices must use the <em>exact same room code</em> and be online at the same time. 
+        If connection fails, use <strong>Export/Import backup</strong> to manually sync.
       </p>
       <button type="button" class="btn-ghost" id="btn-leave">Leave room</button>
     </div>
     ` : ''}
 
     <dialog id="legend-dlg" class="legend-dialog"></dialog>
-    <footer class="note">Private — runs in your browser. Optional sync uses a public Yjs demo server (not for secrets).</footer>
+    <footer class="note">Private — runs in your browser. Sync uses WebRTC peer-to-peer (data stays between your devices only).</footer>
   `;
 
   wire(S.room, q, activeCat);
@@ -667,20 +673,107 @@ async function connectYjs() {
   try {
     console.log('[Sync] Loading Yjs libraries...');
     const Y = await import('https://esm.sh/yjs@13.6.18');
-    const mod = await import('https://esm.sh/y-websocket@1.5.0?deps=yjs@13.6.18');
-    const WebsocketProvider = mod.WebsocketProvider || mod.default?.WebsocketProvider || mod.default;
-    if (!WebsocketProvider) throw new Error('WebsocketProvider not found');
-
+    
     ydoc = new Y.Doc();
     const roomId = yjsDocRoomId();
-    console.log(`[Sync] Connecting to ${SYNC_URL} with room: ${roomId}`);
-    
-    // Create provider with minimal options - let library handle defaults
-    provider = new WebsocketProvider(SYNC_URL, roomId, ydoc);
-    
     yAnswers = ydoc.getMap('answers');
     yMeta = ydoc.getMap('meta');
     ySession = ydoc.getMap('session');
+
+    if (USE_WEBRTC) {
+      console.log('[Sync] Using WebRTC for peer-to-peer connection (works across different networks!)');
+      console.log(`[Sync] Room: ${roomId}`);
+      
+      const webrtcMod = await import('https://esm.sh/y-webrtc@10.3.0?deps=yjs@13.6.18');
+      const WebrtcProvider = webrtcMod.WebrtcProvider || webrtcMod.default?.WebrtcProvider || webrtcMod.default;
+      
+      if (!WebrtcProvider) throw new Error('WebrtcProvider not found');
+      
+      provider = new WebrtcProvider(roomId, ydoc, {
+        signaling: WEBRTC_SIGNALING,
+        password: null,
+        awareness: null,
+        maxConns: 20,
+        filterBcConns: true,
+        peerOpts: {}
+      });
+      
+      console.log('[Sync] WebRTC provider created, waiting for peers...');
+      
+      // WebRTC uses 'peers' and 'synced' events instead of 'status'
+      provider.on('peers', (event) => {
+        const peerCount = event.added?.length || event.removed?.length || 0;
+        console.log(`[Sync] Peers changed. Connected peers: ${provider.room?.peers?.size || 0}`);
+        
+        if (provider.room?.peers?.size > 0) {
+          S.syncStatus = 'synced';
+          console.log('[Sync] ✅ Connected to peer(s)!');
+        } else {
+          console.log('[Sync] ⏳ Waiting for partner to join room...');
+        }
+        render();
+      });
+      
+      provider.on('synced', (event) => {
+        console.log('[Sync] Data synced with peer!');
+        mirrorToLocalFromY();
+        if (S.myRole === 'p1' && S.p1Name) yMeta.set('p1Name', S.p1Name);
+        if (S.myRole === 'p2' && S.p2Name) yMeta.set('p2Name', S.p2Name);
+        pushLocalIntoY();
+        mirrorToLocalFromY();
+        S.syncStatus = 'synced';
+        render();
+        persist();
+      });
+      
+    } else {
+      // Original WebSocket method (fallback)
+      console.log(`[Sync] Using WebSocket connection to ${SYNC_URL}`);
+      console.log(`[Sync] Room: ${roomId}`);
+      
+      const mod = await import('https://esm.sh/y-websocket@1.5.0?deps=yjs@13.6.18');
+      const WebsocketProvider = mod.WebsocketProvider || mod.default?.WebsocketProvider || mod.default;
+      if (!WebsocketProvider) throw new Error('WebsocketProvider not found');
+      
+      provider = new WebsocketProvider(SYNC_URL, roomId, ydoc);
+
+      provider.on('status', (ev) => {
+        console.log(`[Sync] Status changed: ${ev.status}`);
+        if (ev.status === 'connected') {
+          if (connectSlowTimer) {
+            clearTimeout(connectSlowTimer);
+            connectSlowTimer = null;
+          }
+          S.syncStatus = 'synced';
+          console.log('[Sync] ✅ Successfully connected!');
+        } else if (ev.status === 'disconnected') {
+          S.syncStatus = 'offline';
+          console.warn('[Sync] ⚠️ Disconnected from server');
+        }
+        render();
+      });
+
+      provider.on('sync', (synced) => {
+        console.log(`[Sync] Sync event: ${synced ? 'synced' : 'not synced'}`);
+        if (!synced) return;
+        mirrorToLocalFromY();
+        if (S.myRole === 'p1' && S.p1Name) yMeta.set('p1Name', S.p1Name);
+        if (S.myRole === 'p2' && S.p2Name) yMeta.set('p2Name', S.p2Name);
+        pushLocalIntoY();
+        mirrorToLocalFromY();
+        S.syncStatus = 'synced';
+        render();
+        persist();
+      });
+
+      provider.on('connection-error', (err) => {
+        console.error('[Sync] Connection error:', err);
+      });
+
+      provider.on('connection-close', (ev) => {
+        console.warn('[Sync] Connection closed:', ev);
+      });
+    }
 
     afterTxn = () => {
       mirrorToLocalFromY();
@@ -688,43 +781,6 @@ async function connectYjs() {
       render();
     };
     ydoc.on('afterTransaction', afterTxn);
-
-    provider.on('status', (ev) => {
-      console.log(`[Sync] Status changed: ${ev.status}`);
-      if (ev.status === 'connected') {
-        if (connectSlowTimer) {
-          clearTimeout(connectSlowTimer);
-          connectSlowTimer = null;
-        }
-        S.syncStatus = 'synced';
-        console.log('[Sync] ✅ Successfully connected!');
-      } else if (ev.status === 'disconnected') {
-        S.syncStatus = 'offline';
-        console.warn('[Sync] ⚠️ Disconnected from server');
-      }
-      render();
-    });
-
-    provider.on('sync', (synced) => {
-      console.log(`[Sync] Sync event: ${synced ? 'synced' : 'not synced'}`);
-      if (!synced) return;
-      mirrorToLocalFromY();
-      if (S.myRole === 'p1' && S.p1Name) yMeta.set('p1Name', S.p1Name);
-      if (S.myRole === 'p2' && S.p2Name) yMeta.set('p2Name', S.p2Name);
-      pushLocalIntoY();
-      mirrorToLocalFromY();
-      S.syncStatus = 'synced';
-      render();
-      persist();
-    });
-
-    provider.on('connection-error', (err) => {
-      console.error('[Sync] Connection error:', err);
-    });
-
-    provider.on('connection-close', (ev) => {
-      console.warn('[Sync] Connection closed:', ev);
-    });
 
     mirrorToLocalFromY();
     if (S.myRole === 'p1' && S.p1Name) yMeta.set('p1Name', S.p1Name);
@@ -735,9 +791,12 @@ async function connectYjs() {
 
     connectSlowTimer = setTimeout(() => {
       if (S.syncStatus === 'connecting') {
-        console.error('[Sync] ❌ Connection timeout after 15s - server may be unreachable');
-        console.log('[Sync] Troubleshooting: Check if wss://demos.yjs.dev is accessible, try disabling ad blockers, or switch to WiFi');
-        S.syncStatus = 'offline';
+        console.warn('[Sync] ⏳ Still waiting for partner... Make sure both devices are in the same room.');
+        if (!USE_WEBRTC) {
+          console.error('[Sync] ❌ Connection timeout - server may be unreachable');
+          S.syncStatus = 'offline';
+        }
+        // For WebRTC, stay in connecting state - peer might join later
         render();
       }
       connectSlowTimer = null;
