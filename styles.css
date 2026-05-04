@@ -502,3 +502,83 @@ footer.note {
   padding: 0.1em 0.35em;
   border-radius: 6px;
 }
+/* Player answer columns */
+.answer-section {
+  margin-top: 1.5rem;
+}
+
+.answer-section h4 {
+  font-size: 1rem;
+  margin: 0 0 1rem;
+  text-align: center;
+}
+
+.player-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+@media (max-width: 600px) {
+  .player-cols {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+}
+
+.player-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.player-col strong {
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--accent);
+  margin-bottom: 0.25rem;
+}
+
+.opt-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 0.65rem;
+  color: var(--text);
+  font-size: 0.9rem;
+  text-align: left;
+  transition: all 0.15s;
+  cursor: pointer;
+}
+
+.opt-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--accent);
+}
+
+.opt-btn.selected {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.opt-btn .opt-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.opt-btn.selected .opt-key {
+  background: rgba(255, 255, 255, 0.25);
+}
