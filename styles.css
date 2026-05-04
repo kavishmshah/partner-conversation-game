@@ -582,3 +582,121 @@ footer.note {
 .opt-btn.selected .opt-key {
   background: rgba(255, 255, 255, 0.25);
 }
+/* Category badge */
+.category-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.cat-emoji {
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.category-badge strong {
+  display: block;
+  font-size: 1rem;
+  color: var(--accent);
+  margin-bottom: 0.15rem;
+}
+
+.cat-progress {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+/* Question card */
+.question-card {
+  background: linear-gradient(135deg, rgba(124, 156, 255, 0.1), rgba(94, 207, 138, 0.1));
+  border: 2px solid rgba(124, 156, 255, 0.3);
+  border-radius: 14px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.question-card .q-text {
+  font-size: 1.1rem;
+  line-height: 1.6;
+  margin: 0;
+  font-weight: 500;
+}
+
+/* Welcome state */
+.welcome-state {
+  text-align: center;
+  padding: 2rem 1rem;
+}
+
+.welcome-state h2 {
+  font-size: 1.5rem;
+  margin: 0 0 0.5rem;
+}
+
+/* Action row */
+.action-row {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.action-row .btn-primary {
+  flex: 1;
+  min-width: 200px;
+}
+
+/* Progress tracking */
+.category-progress {
+  margin: 1.5rem 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 0;
+}
+
+.category-progress summary {
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  font-weight: 600;
+  list-style: none;
+  user-select: none;
+}
+
+.category-progress summary::-webkit-details-marker {
+  display: none;
+}
+
+.progress-list {
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.progress-item {
+  display: grid;
+  grid-template-columns: 1fr 2fr auto;
+  gap: 0.75rem;
+  align-items: center;
+  font-size: 0.9rem;
+}
+
+.progress-bar-container {
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--ok));
+  transition: width 0.3s ease;
+}

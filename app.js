@@ -3,11 +3,9 @@ import { CATEGORIES, CATEGORY_BY_DICE, findQuestion } from './questions-index.js
 const LS_KEY = 'conversation-game-v1';
 
 const state = {
-  session: { dice: 0, categoryId: '', questionId: '' },
+  session: { categoryId: '', questionId: '' },
   history: [], // {categoryId, questionId, p1Answer, p2Answer}
   cardFlipped: false,
-  rolling: false,
-  showingAnswers: false,
 };
 
 function persist() {
@@ -30,25 +28,33 @@ function load() {
   }
 }
 
-function rollDice() {
-  return Math.floor(Math.random() * 6) + 1;
+function getAnsweredQuestionsForCategory(catId) {
+  return state.history
+    .filter(h => h.categoryId === catId)
+    .map(h => h.questionId);
 }
 
-function pickRandomQuestion(catId) {
+function pickRandomUnansweredQuestion(catId) {
   const cat = CATEGORIES.find((c) => c.id === catId);
   if (!cat?.questions.length) return '';
-  const q = cat.questions[Math.floor(Math.random() * cat.questions.length)];
+  
+  const answeredIds = getAnsweredQuestionsForCategory(catId);
+  const unanswered = cat.questions.filter(q => !answeredIds.includes(q.id));
+  
+  // If all answered, allow repeats
+  const pool = unanswered.length > 0 ? unanswered : cat.questions;
+  const q = pool[Math.floor(Math.random() * pool.length)];
   return q.id;
 }
 
-function applyDice(d) {
-  const cat = CATEGORY_BY_DICE[d];
-  if (!cat) return;
-  state.session.dice = d;
+function getNextQuestion() {
+  // Pick a random category
+  const catIndex = Math.floor(Math.random() * CATEGORIES.length);
+  const cat = CATEGORIES[catIndex];
+  
   state.session.categoryId = cat.id;
-  state.session.questionId = pickRandomQuestion(cat.id);
-  state.cardFlipped = false;
-  state.showingAnswers = false;
+  state.session.questionId = pickRandomUnansweredQuestion(cat.id);
+  state.cardFlipped = true;
   persist();
 }
 
@@ -122,60 +128,51 @@ function render() {
   const activeCat = state.session.categoryId ? CATEGORIES.find((c) => c.id === state.session.categoryId) : null;
   const q = activeCat && state.session.questionId ? findQuestion(activeCat.id, state.session.questionId) : null;
   
-  const catChips = CATEGORIES.map((c, idx) => {
-    const n = idx + 1;
-    const on = state.session.questionId && c.id === state.session.categoryId;
-    return `<button type="button" class="cat-chip ${on ? 'active' : ''}" data-legend="${c.id}" title="${escapeHtml(c.name)}: ${escapeHtml(c.legend)}">
-      <span class="emoji">${c.emoji}</span>
-      <span>${n}</span>
-    </button>`;
-  }).join('');
+  // Calculate progress for each category
+  const catProgress = CATEGORIES.map(cat => {
+    const answered = getAnsweredQuestionsForCategory(cat.id).length;
+    const total = cat.questions.length;
+    return { ...cat, answered, total };
+  });
   
   const letters = ['A', 'B', 'C', 'D'];
-  const optionsHtml = q ? `
-    <div class="opts-grid">
-      ${q.options.map((t, i) => `
-        <button type="button" class="opt-card" data-p="1" data-i="${i}">
-          <span class="opt-key">${letters[i]}</span>
-          <span class="opt-text">${escapeHtml(t)}</span>
-        </button>
-      `).join('')}
-    </div>
-  ` : '<p class="sub">Roll the dice to draw a question card!</p>';
-  
   const dash = compatibilityStats();
   
   appEl.innerHTML = `
     <header>
       <h1>💬 Partner Conversation Game</h1>
-      <p class="sub">Roll dice → Discuss the question → See your compatibility!</p>
+      <p class="sub">Discuss questions together → Pick answers → See your compatibility!</p>
     </header>
     
     <div class="panel">
-      <div class="dice-zone">
-        <div class="die ${state.rolling ? 'rolling' : ''}">${state.session.dice >= 1 ? state.session.dice : '🎲'}</div>
-        <button type="button" class="btn-dice" id="btn-dice" ${state.rolling ? 'disabled' : ''}>Roll Dice</button>
-      </div>
-      
-      <div class="category-strip">${catChips}</div>
-      <p class="sub">Each die number maps to a category (tap chips for descriptions)</p>
-      
-      <div class="flip-scene">
-        <div class="flip-inner ${state.cardFlipped && q ? 'is-flipped' : ''}" id="flip-card">
-          <div class="flip-face flip-front" role="button" tabindex="0">
-            <div style="font-size:2.5rem;margin-bottom:.5rem">${activeCat ? activeCat.emoji : '🎴'}</div>
-            <div class="q-text">${activeCat ? escapeHtml(activeCat.name) : 'Ready to Play?'}</div>
-            <p class="flip-hint">${q ? 'Tap to flip back' : 'Roll dice to start'}</p>
-          </div>
-          <div class="flip-face flip-back">
-            <p class="q-text">${q ? escapeHtml(q.text) : ''}</p>
+      ${q ? `
+        <div class="category-badge">
+          <span class="cat-emoji">${activeCat.emoji}</span>
+          <div>
+            <strong>${escapeHtml(activeCat.name)}</strong>
+            <span class="cat-progress">${getAnsweredQuestionsForCategory(activeCat.id).length}/${activeCat.questions.length} answered</span>
           </div>
         </div>
+        
+        <div class="question-card">
+          <p class="q-text">${escapeHtml(q.text)}</p>
+        </div>
+      ` : `
+        <div class="welcome-state">
+          <div style="font-size:3rem;margin-bottom:1rem">💕</div>
+          <h2>Ready to start?</h2>
+          <p class="sub">Get a random conversation question from any category!</p>
+        </div>
+      `}
+      
+      <div class="action-row">
+        <button type="button" class="btn-primary" id="btn-next">${q ? 'Next Question' : 'Start'}</button>
+        ${q ? '<button type="button" class="btn-ghost" id="btn-stats">View Compatibility</button>' : ''}
       </div>
       
       ${q ? `
         <div class="answer-section">
-          <h4>💭 Talk it out, then each pick your answer:</h4>
+          <h4>💭 Each person picks their answer:</h4>
           <div class="player-cols">
             <div class="player-col">
               <strong>Player 1</strong>
@@ -197,10 +194,26 @@ function render() {
         </div>
       ` : ''}
       
+      ${state.history.length > 0 ? `
+        <details class="category-progress">
+          <summary>📊 Progress by Category (${state.history.length}/132 total)</summary>
+          <div class="progress-list">
+            ${catProgress.map(c => `
+              <div class="progress-item">
+                <span>${c.emoji} ${c.name}</span>
+                <span class="progress-bar-container">
+                  <span class="progress-bar-fill" style="width:${(c.answered/c.total*100)}%"></span>
+                </span>
+                <span>${c.answered}/${c.total}</span>
+              </div>
+            `).join('')}
+          </div>
+        </details>
+      ` : ''}
+      
       <div class="tool-row">
-        <button type="button" class="btn-ghost" id="btn-new-card">New Card (Same Category)</button>
-        <button type="button" class="btn-ghost" id="btn-stats">View Compatibility</button>
-        <button type="button" class="btn-ghost" id="btn-reset">Reset Game</button>
+        ${q ? '<button type="button" class="btn-ghost" id="btn-skip">Skip Question</button>' : ''}
+        <button type="button" class="btn-ghost" id="btn-reset">Reset All Data</button>
       </div>
     </div>
     
@@ -223,46 +236,20 @@ function render() {
       <footer><button type="button" class="btn-ghost" id="stats-close">Close</button></footer>
     </dialog>
     
-    <dialog id="legend-dlg"></dialog>
-    
-    <footer class="note">💡 Single device game - both players answer together!</footer>
+    <footer class="note">💡 ${state.history.length > 0 ? `${state.history.length} questions answered so far! ` : ''}No repeats until you complete all 22 in each category</footer>
   `;
   
   wire();
 }
 
 function wire() {
-  document.getElementById('btn-dice')?.addEventListener('click', async () => {
-    state.rolling = true;
-    render();
-    await new Promise((r) => setTimeout(r, 500));
-    const d = rollDice();
-    applyDice(d);
-    state.rolling = false;
-    render();
-    await new Promise((r) => setTimeout(r, 300));
-    state.cardFlipped = true;
-    persist();
+  document.getElementById('btn-next')?.addEventListener('click', () => {
+    getNextQuestion();
     render();
   });
   
-  const flipCard = document.getElementById('flip-card');
-  flipCard?.addEventListener('click', () => {
-    if (!state.session.questionId) return;
-    state.cardFlipped = !state.cardFlipped;
-    persist();
-    render();
-  });
-  
-  document.getElementById('btn-new-card')?.addEventListener('click', async () => {
-    if (!state.session.categoryId) return;
-    state.session.questionId = pickRandomQuestion(state.session.categoryId);
-    state.cardFlipped = false;
-    persist();
-    render();
-    await new Promise((r) => setTimeout(r, 300));
-    state.cardFlipped = true;
-    persist();
+  document.getElementById('btn-skip')?.addEventListener('click', () => {
+    getNextQuestion();
     render();
   });
   
@@ -287,22 +274,13 @@ function wire() {
       if (p1Answer !== null && p2Answer !== null) {
         recordAnswers(p1Answer, p2Answer);
         const match = p1Answer === p2Answer;
-        alert(match ? '✅ You matched!' : '❌ Different answers - great conversation starter!');
-        p1Answer = null;
-        p2Answer = null;
+        setTimeout(() => {
+          alert(match ? '✅ You matched! Great minds think alike!' : '❌ Different answers - great conversation starter!');
+          p1Answer = null;
+          p2Answer = null;
+          render(); // Refresh to show updated progress
+        }, 100);
       }
-    });
-  });
-  
-  document.querySelectorAll('.cat-chip').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const id = btn.getAttribute('data-legend');
-      const cat = CATEGORIES.find((c) => c.id === id);
-      const dlg = document.getElementById('legend-dlg');
-      if (!cat || !dlg) return;
-      dlg.innerHTML = `<article><h3>${escapeHtml(cat.emoji)} ${escapeHtml(cat.name)}</h3><p>${escapeHtml(cat.legend)}</p></article><footer><button type="button" class="btn-ghost" id="legend-close">Close</button></footer>`;
-      dlg.showModal();
-      document.getElementById('legend-close')?.addEventListener('click', () => dlg.close());
     });
   });
   
@@ -316,9 +294,9 @@ function wire() {
   });
   
   document.getElementById('btn-reset')?.addEventListener('click', () => {
-    if (confirm('Reset all data? This cannot be undone.')) {
+    if (confirm('Reset all data? This will delete all your answered questions and compatibility scores. This cannot be undone.')) {
       localStorage.removeItem(LS_KEY);
-      state.session = { dice: 0, categoryId: '', questionId: '' };
+      state.session = { categoryId: '', questionId: '' };
       state.history = [];
       state.cardFlipped = false;
       render();
